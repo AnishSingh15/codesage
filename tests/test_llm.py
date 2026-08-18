@@ -76,3 +76,28 @@ def test_generate_raises_clear_error_after_retry_also_fails():
 
     with pytest.raises(RuntimeError, match="Gemini API call failed after 1 retry"):
         llm.generate(contents=["some content"])
+
+
+def test_generate_backs_off_longer_on_rate_limit_error_than_generic_error(monkeypatch):
+    # A 429 needs to wait out the free-tier per-minute quota window, not a
+    # generic-transient-error-length pause — retrying too soon just wastes
+    # the one retry we have on a guaranteed second failure.
+    sleep_calls = []
+    monkeypatch.setattr("codesage.llm.time.sleep", lambda seconds: sleep_calls.append(seconds))
+
+    class FakeRateLimitError(Exception):
+        code = 429
+
+    fake_client = FakeGenaiClient()
+
+    def rate_limited_once(model, contents, config=None):
+        if not sleep_calls:
+            raise FakeRateLimitError("429 RESOURCE_EXHAUSTED")
+        return SimpleNamespace(text="mocked answer", function_calls=None)
+
+    fake_client.models.generate_content = rate_limited_once
+    llm = LLMClient(client=fake_client)
+
+    llm.generate(contents=["some content"])
+
+    assert sleep_calls == [20]

@@ -40,12 +40,21 @@ def score_answer(answer: str, case: EvalCase) -> float:
     return hits / len(case.expected_answer_keywords)
 
 
-def run_eval(agent, index, llm, cases: list[EvalCase]) -> dict:
+def run_eval(agent_factory, index, llm, cases: list[EvalCase]) -> dict:
+    """agent_factory is called once per case, not once total.
+
+    Eval cases are independent questions, not a conversation — sharing one
+    Agent's memory across them mixes unrelated context and, once memory
+    fills up, can even corrupt the turn sequence (a sliding-window eviction
+    can split a function-call/function-response pair mid-tool-use, which
+    the API rejects outright). A fresh Agent per case sidesteps both.
+    """
     retrieval_hits = 0
     answer_scores = []
     for case in cases:
         if score_retrieval(index, llm, case):
             retrieval_hits += 1
+        agent = agent_factory()
         answer = agent.ask(case.question)
         answer_scores.append(score_answer(answer, case))
 

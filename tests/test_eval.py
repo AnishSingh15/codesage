@@ -50,6 +50,33 @@ def test_run_eval_aggregates_scores():
         def ask(self, question):
             return "returns a token"
 
-    results = run_eval(FakeAgent(), index, FakeLLM(), [case])
+    results = run_eval(lambda: FakeAgent(), index, FakeLLM(), [case])
 
     assert results == {"retrieval_hit_rate": 1.0, "avg_answer_score": 1.0}
+
+
+def test_run_eval_builds_a_fresh_agent_per_case():
+    # Regression test: eval cases are independent questions. Sharing one
+    # Agent's memory across them mixed unrelated context and, once memory
+    # filled up, could corrupt the turn sequence outright. agent_factory
+    # must be called once per case, not once total.
+    case = EvalCase(question="q", expected_file_substring="nomatch", expected_answer_keywords=[])
+    index = RetrievalIndex([])
+
+    class FakeLLM:
+        def embed(self, text, output_dimensionality=768):
+            return [0.0]
+
+    factory_calls = []
+
+    class FakeAgent:
+        def ask(self, question):
+            return "answer"
+
+    def agent_factory():
+        factory_calls.append(1)
+        return FakeAgent()
+
+    run_eval(agent_factory, index, FakeLLM(), [case, case, case])
+
+    assert len(factory_calls) == 3

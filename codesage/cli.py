@@ -123,9 +123,8 @@ def main() -> None:
         index = RetrievalIndex(chunks)
         registry = build_base_registry(repo_path)
         registry.register(make_search_code_tool(index, llm))
-        agent = Agent(llm, tools=registry)
 
-        results = run_eval(agent, index, llm, load_cases(cases_path))
+        results = run_eval(lambda: Agent(llm, tools=registry), index, llm, load_cases(cases_path))
         print(f"Retrieval hit rate: {results['retrieval_hit_rate']:.0%}")
         print(f"Avg answer score:   {results['avg_answer_score']:.0%}")
 

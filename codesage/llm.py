@@ -12,6 +12,8 @@ from google.genai import types
 
 _MAX_RETRIES = 1
 _RETRY_BACKOFF_SECONDS = 0.1
+_RATE_LIMIT_STATUS_CODE = 429
+_RATE_LIMIT_BACKOFF_SECONDS = 20
 
 
 class LLMClient:
@@ -57,7 +59,14 @@ class LLMClient:
             except Exception as exc:
                 last_error = exc
                 if attempt < _MAX_RETRIES:
-                    time.sleep(_RETRY_BACKOFF_SECONDS)
+                    # A generic transient error (timeout, flaky connection) clears in
+                    # well under a second. A 429 rate-limit error won't clear until
+                    # the free tier's per-minute quota window rolls over — retrying
+                    # after 0.1s just wastes the one retry we have on a guaranteed
+                    # second failure, so back off long enough to actually matter.
+                    is_rate_limit = getattr(exc, "code", None) == _RATE_LIMIT_STATUS_CODE
+                    backoff = _RATE_LIMIT_BACKOFF_SECONDS if is_rate_limit else _RETRY_BACKOFF_SECONDS
+                    time.sleep(backoff)
         raise RuntimeError(
             f"Gemini API call failed after {_MAX_RETRIES} retry: {last_error}"
         ) from last_error
