@@ -1,0 +1,27 @@
+[
+  {
+    "question": "How does the Session class handle connection pooling and adapters?",
+    "expected_file_substring": "sessions.py",
+    "expected_answer_keywords": ["adapter", "mount"]
+  },
+  {
+    "question": "How does requests handle HTTP redirects?",
+    "expected_file_substring": "sessions.py",
+    "expected_answer_keywords": ["redirect"]
+  },
+  {
+    "question": "How is HTTP Basic Authentication implemented?",
+    "expected_file_substring": "auth.py",
+    "expected_answer_keywords": ["basic", "authorization"]
+  },
+  {
+    "question": "How are cookies stored and managed?",
+    "expected_file_substring": "cookies.py",
+    "expected_answer_keywords": ["cookie"]
+  },
+  {
+    "question": "What exceptions does requests raise for connection or timeout errors?",
+    "expected_file_substring": "exceptions.py",
+    "expected_answer_keywords": ["connection", "timeout"]
+  }
+]

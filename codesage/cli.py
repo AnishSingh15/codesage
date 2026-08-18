@@ -62,6 +62,10 @@ def main() -> None:
     ask_parser.add_argument("question")
     ask_parser.add_argument("--repo", default=".", help="Target repo path")
 
+    eval_parser = subparsers.add_parser("eval")
+    eval_parser.add_argument("--repo", default=".", help="Target repo path")
+    eval_parser.add_argument("--cases", default="eval_cases.json", help="Path to eval cases JSON")
+
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -97,6 +101,30 @@ def main() -> None:
 
         agent = Agent(llm, tools=registry)
         print(agent.ask(args.question))
+
+    elif args.command == "eval":
+        from codesage.eval import load_cases, run_eval
+
+        repo_path = Path(args.repo)
+        index_path = repo_path / INDEX_FILENAME
+        if not index_path.exists():
+            print(f"No index found. Run 'codesage ingest {repo_path}' first.", file=sys.stderr)
+            sys.exit(1)
+
+        cases_path = Path(args.cases)
+        if not cases_path.exists():
+            print(f"No eval cases found at {cases_path}. See eval_cases.json for the format.", file=sys.stderr)
+            sys.exit(1)
+
+        chunks = load_chunks(index_path)
+        index = RetrievalIndex(chunks)
+        registry = build_base_registry(repo_path)
+        registry.register(make_search_code_tool(index, llm))
+        agent = Agent(llm, tools=registry)
+
+        results = run_eval(agent, index, llm, load_cases(cases_path))
+        print(f"Retrieval hit rate: {results['retrieval_hit_rate']:.0%}")
+        print(f"Avg answer score:   {results['avg_answer_score']:.0%}")
 
 
 if __name__ == "__main__":
