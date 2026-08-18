@@ -1,0 +1,31 @@
+[project]
+name = "codesage"
+version = "0.1.0"
+description = "An AI agent that answers questions about a codebase, built from scratch to teach agentic AI and DSA/LLD."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "google-genai>=1.0.0",
+    "numpy>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]
+
+[project.scripts]
+codesage = "codesage.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires a real GEMINI_API_KEY and network access",
+]
+addopts = "-m 'not integration'"
