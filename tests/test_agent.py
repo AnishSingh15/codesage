@@ -49,3 +49,33 @@ def test_ask_executes_a_tool_call_then_returns_final_answer():
 
     assert answer == "here's your answer"
     assert len(fake_llm.calls) == 2
+
+
+def test_ask_gives_up_after_max_steps_without_hanging():
+    def always_calls_tool(*_args, **_kwargs):
+        return SimpleNamespace(
+            text=None,
+            function_calls=[SimpleNamespace(name="loop", args={})],
+            candidates=[SimpleNamespace(content=SimpleNamespace(role="model", parts=[]))],
+        )
+
+    class InfiniteFakeLLM:
+        def __init__(self):
+            self.call_count = 0
+
+        def generate(self, contents, tools=None):
+            self.call_count += 1
+            return always_calls_tool()
+
+    registry = ToolRegistry()
+    registry.register(
+        Tool(name="loop", description="", parameters_schema={"type": "object"}, handler=lambda: "again")
+    )
+
+    fake_llm = InfiniteFakeLLM()
+    agent = Agent(llm=fake_llm, tools=registry, max_steps=3)
+
+    answer = agent.ask("this will never resolve")
+
+    assert "couldn't finish" in answer.lower()
+    assert fake_llm.call_count == 3
