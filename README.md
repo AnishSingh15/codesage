@@ -73,6 +73,28 @@ covered by regression tests:
   new accounts between writing the code and running it. Current default
   is `gemini-3.5-flash-lite` — check `client.models.list()` if this
   breaks again.
+- **The API endpoint had the same memory-sharing bug as eval, plus a
+  quota-burning one.** `get_app()` originally re-ingested (real embed
+  calls) on every container startup, and `create_app()` shared one
+  `Agent` across every `/ask` request — two unrelated questions could
+  corrupt each other's turn sequence the same way eval cases did. Fixed
+  by reusing a persisted index at startup and building a fresh `Agent`
+  per request (`agent_factory`, same pattern as `run_eval`).
+- **"Free tier" claims need re-verifying at deploy time, not planning
+  time.** Hugging Face Spaces required a PRO subscription for Docker
+  SDK by the time this was actually deployed, despite being free when
+  the project was scoped. Deployed to Render's free Docker web service
+  tier instead — verify current pricing pages before committing to a
+  host, not just at the start of a project.
+
+## Deployment layout
+
+`target_repo/` (the ingested corpus + its prebuilt index) is gitignored
+on `main` — a portfolio repo shouldn't vendor a third-party library's
+full source into its history. A separate `deploy` branch force-adds
+`target_repo/src` (source + `.codesage_index.json`) so Render's build
+has what it needs; Render is configured to build from `deploy`, not
+`main`.
 
 ## Setup
 
@@ -98,7 +120,14 @@ uv run pytest -m integration # end-to-end, needs GEMINI_API_KEY
 
 ## Live demo
 
-<!-- filled in after deployment -->
+https://codesage-qte5.onrender.com — deployed to Render's free tier
+(cold starts after 15 min idle are expected on the free plan).
+
+```bash
+curl -X POST https://codesage-qte5.onrender.com/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does the Session class handle connection pooling?"}'
+```
 
 ## Design docs
 
