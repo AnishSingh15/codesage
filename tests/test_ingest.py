@@ -44,8 +44,25 @@ def test_ingest_repo_embeds_every_chunk(tmp_path: Path):
         def embed(self, text, output_dimensionality=768):
             return [float(len(text))]
 
-    chunks = ingest_repo(tmp_path, FakeLLM())
+    chunks = ingest_repo(tmp_path, FakeLLM(), delay_seconds=0)
 
     assert len(chunks) == 1
     assert chunks[0].vector == [float(len(chunks[0].text))]
     assert isinstance(chunks[0], Chunk)
+
+
+def test_ingest_repo_stores_paths_relative_to_repo_root(tmp_path: Path):
+    # Regression test: file_path must be relative to repo_path (not the
+    # rglob-produced path) so it matches what list_files/read_file expect —
+    # otherwise the agent's own search_code citations become unusable inputs
+    # to read_file (base_dir joined onto an already-prefixed path).
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.py").write_text("x = 1")
+
+    class FakeLLM:
+        def embed(self, text, output_dimensionality=768):
+            return [0.0]
+
+    chunks = ingest_repo(tmp_path, FakeLLM(), delay_seconds=0)
+
+    assert chunks[0].file_path == "sub/b.py"

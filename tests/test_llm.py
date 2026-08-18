@@ -31,7 +31,7 @@ def test_generate_delegates_to_client_and_returns_response():
     response = llm.generate(contents=["some content"])
 
     assert response.text == "mocked answer"
-    assert fake_client.models.generate_calls[0]["model"] == "gemini-2.5-flash"
+    assert fake_client.models.generate_calls[0]["model"] == "gemini-3.5-flash-lite"
     assert fake_client.models.generate_calls[0]["contents"] == ["some content"]
 
 

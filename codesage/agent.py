@@ -80,7 +80,7 @@ class Agent:
 
         self._memory.add(
             types.Content(
-                role="tool",
+                role="user",
                 parts=[types.Part.from_function_response(name=call.name, response=function_response)],
             )
         )

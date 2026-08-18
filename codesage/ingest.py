@@ -6,6 +6,7 @@ sometimes splitting a function across two chunks. Good enough for v1;
 the tradeoff is called out in the README.
 """
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
@@ -52,10 +53,21 @@ def chunk_file(path: Path, lines_per_chunk: int = 40) -> list[Chunk]:
     return chunks
 
 
-def ingest_repo(repo_path: Path, llm) -> list[Chunk]:
+def ingest_repo(repo_path: Path, llm, delay_seconds: float = 0.5) -> list[Chunk]:
+    # The embeddings API has a free-tier per-minute rate limit; firing every
+    # chunk's embed call back-to-back 429s partway through any repo big
+    # enough to matter. A fixed delay is a blunt fix (no backoff-aware
+    # pacing), but it's enough to keep a single-repo ingest under the limit.
     chunks: list[Chunk] = []
     for file_path in iter_source_files(repo_path):
         for chunk in chunk_file(file_path):
+            # Store paths relative to repo_path, not the absolute/prefixed path
+            # chunk_file produced — read_file/list_files also resolve relative to
+            # repo_path, so citations and tool-call paths must speak the same
+            # coordinate system or the agent will misread its own search results.
+            chunk.file_path = str(Path(chunk.file_path).relative_to(repo_path))
             chunk.vector = llm.embed(chunk.text)
             chunks.append(chunk)
+            if delay_seconds:
+                time.sleep(delay_seconds)
     return chunks

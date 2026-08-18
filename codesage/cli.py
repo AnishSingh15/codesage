@@ -57,6 +57,9 @@ def main() -> None:
 
     ingest_parser = subparsers.add_parser("ingest")
     ingest_parser.add_argument("repo_path")
+    ingest_parser.add_argument(
+        "--delay", type=float, default=0.5, help="Seconds to sleep between embed calls (rate-limit mitigation)"
+    )
 
     ask_parser = subparsers.add_parser("ask")
     ask_parser.add_argument("question")
@@ -79,7 +82,7 @@ def main() -> None:
         from codesage.ingest import ingest_repo
 
         repo_path = Path(args.repo_path)
-        chunks = ingest_repo(repo_path, llm)
+        chunks = ingest_repo(repo_path, llm, delay_seconds=args.delay)
         save_chunks(chunks, repo_path / INDEX_FILENAME)
         print(f"Indexed {len(chunks)} chunks from {repo_path}")
 
