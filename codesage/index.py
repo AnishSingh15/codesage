@@ -14,6 +14,8 @@ import numpy as np
 
 from codesage.ingest import Chunk
 
+INDEX_FILENAME = ".codesage_index.json"
+
 
 class RetrievalIndex:
     def __init__(self, chunks: list[Chunk]):

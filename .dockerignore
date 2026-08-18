@@ -1,0 +1,9 @@
+.git
+target_repo/.git
+**/__pycache__
+.venv
+.pytest_cache
+tests
+docs
+*.egg-info
+.env

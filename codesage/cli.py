@@ -10,9 +10,7 @@ from dotenv import load_dotenv
 from codesage.agent import Agent
 from codesage.llm import LLMClient
 from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler, make_search_code_tool
-from codesage.index import RetrievalIndex, load_chunks, save_chunks
-
-INDEX_FILENAME = ".codesage_index.json"
+from codesage.index import INDEX_FILENAME, RetrievalIndex, load_chunks, save_chunks
 
 
 def build_base_registry(base_dir: Path) -> ToolRegistry:
