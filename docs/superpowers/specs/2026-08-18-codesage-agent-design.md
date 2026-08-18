@@ -47,8 +47,11 @@ multi-step planning — is hand-written.
   of chunks (hundreds to low thousands).
 - **Testing:** `pytest`
 - **CI:** GitHub Actions (lint + test on push)
-- **No web framework, no database.** CodeSage is a CLI tool for v1. A UI is
-  explicitly out of scope (see below).
+- **No database.** CodeSage is a CLI tool at its core; Phase 8 adds a thin
+  `FastAPI` wrapper around the same agent code purely to make it demoable via
+  a live link (see Phase 8 below). No frontend framework, no database.
+- **Hosting (Phase 8):** a free tier (Render or Hugging Face Spaces) — no
+  cost, no infra the user has to maintain long-term.
 
 ## Architecture
 
@@ -124,6 +127,17 @@ multi-step planning — is hand-written.
 - `codesage ask "<question>"` — runs the agent loop, prints answer + citations
 - `codesage eval` — runs the eval harness
 
+**8. API + deployment** (`codesage/api.py`, Phase 8)
+- A thin `FastAPI` app exposing `POST /ask` — reuses the exact same
+  `Agent`/`Index`/`ToolRegistry` classes from Phases 1–7, no duplicated logic
+- The index is built once at startup (ingesting the default target repo) and
+  held in memory
+- Deployed to a free tier (Render or Hugging Face Spaces) so the project has
+  a live link, not just a `git clone`-and-run README
+- This phase teaches: separating a "core library" from its "interface"
+  (the CLI and the API are two thin interfaces over the same agent code —
+  an LLD lesson in its own right)
+
 ## Data flow (a single question)
 
 1. User runs `codesage ask "how does the retry logic work?"`
@@ -176,6 +190,7 @@ codesage/
     agent.py
     eval.py
     cli.py
+    api.py
   tests/
     fixtures/
     test_*.py
@@ -192,7 +207,7 @@ codesage/
 
 - Persistent/external vector database (Chroma, FAISS, Pinecone) — brute-force
   in-memory is a deliberate teaching choice and is fast enough at this scale
-- Web UI — CLI only
+- Frontend UI — Phase 8 ships a JSON API + live link, not a web frontend
 - Multi-agent orchestration (supervisor/sub-agents) — noted as a natural
   "v2" extension once the single-agent loop is solid, not built now
 - Streaming responses
@@ -203,9 +218,10 @@ codesage/
 
 - `codesage ask` correctly answers questions about the target repo with
   accurate file/line citations, verified against the Phase 6 eval set
-- Every phase (1–7) is its own commit (or small commit series) with a message
+- Every phase (1–8) is its own commit (or small commit series) with a message
   explaining the concept it introduces
 - `pytest` passes in CI on a clean checkout
-- README documents architecture, setup, and how to point CodeSage at a
-  different repo
+- README documents architecture, setup, how to point CodeSage at a different
+  repo, and links the live deployed demo
 - Repo is pushed to the user's GitHub as a public repository
+- A live URL exists where `POST /ask` can be called against the deployed demo
