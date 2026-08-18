@@ -1,4 +1,4 @@
-"""CLI entrypoint. Phase 2: `ask` now has list_files/read_file tools."""
+"""CLI entrypoint. Phase 4b: adds `ingest`; `ask` uses the index if present."""
 
 import argparse
 import os
@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 
 from codesage.agent import Agent
 from codesage.llm import LLMClient
-from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler
+from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler, make_search_code_tool
+from codesage.index import RetrievalIndex, load_chunks, save_chunks
+
+INDEX_FILENAME = ".codesage_index.json"
 
 
 def build_base_registry(base_dir: Path) -> ToolRegistry:
@@ -52,6 +55,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="codesage")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    ingest_parser = subparsers.add_parser("ingest")
+    ingest_parser.add_argument("repo_path")
+
     ask_parser = subparsers.add_parser("ask")
     ask_parser.add_argument("question")
     ask_parser.add_argument("--repo", default=".", help="Target repo path")
@@ -65,9 +71,30 @@ def main() -> None:
 
     llm = LLMClient(api_key=api_key)
 
-    if args.command == "ask":
+    if args.command == "ingest":
+        from codesage.ingest import ingest_repo
+
+        repo_path = Path(args.repo_path)
+        chunks = ingest_repo(repo_path, llm)
+        save_chunks(chunks, repo_path / INDEX_FILENAME)
+        print(f"Indexed {len(chunks)} chunks from {repo_path}")
+
+    elif args.command == "ask":
         repo_path = Path(args.repo)
         registry = build_base_registry(repo_path)
+
+        index_path = repo_path / INDEX_FILENAME
+        if index_path.exists():
+            chunks = load_chunks(index_path)
+            index = RetrievalIndex(chunks)
+            registry.register(make_search_code_tool(index, llm))
+        else:
+            print(
+                f"(no index found at {index_path} — run 'codesage ingest {repo_path}' "
+                "for retrieval-backed answers; continuing with list_files/read_file only)",
+                file=sys.stderr,
+            )
+
         agent = Agent(llm, tools=registry)
         print(agent.ask(args.question))
 

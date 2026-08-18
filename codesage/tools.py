@@ -10,6 +10,8 @@ from typing import Callable
 
 from google.genai import types
 
+from codesage.index import RetrievalIndex
+
 
 @dataclass
 class Tool:
@@ -76,3 +78,23 @@ def read_file_handler(
     start = (start_line or 1) - 1
     end = end_line or len(lines)
     return "\n".join(lines[start:end])
+
+
+def make_search_code_tool(index: RetrievalIndex, llm) -> Tool:
+    def handler(query: str) -> str:
+        query_vector = llm.embed(query)
+        results = index.search(query_vector, k=5)
+        if not results:
+            return "No matching code found."
+        return "\n\n".join(f"{c.file_path}:{c.line_start}-{c.line_end}\n{c.text}" for c in results)
+
+    return Tool(
+        name="search_code",
+        description="Semantic search over the ingested codebase. Returns relevant code chunks with file/line citations.",
+        parameters_schema={
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "What to search for"}},
+            "required": ["query"],
+        },
+        handler=handler,
+    )
