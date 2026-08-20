@@ -62,12 +62,20 @@ def main() -> None:
         print(f"Indexed {len(chunks)} chunks from {repo_path}")
 
     elif args.command == "ingest-hierarchy":
+        from codesage.callgraph import CALLGRAPH_FILENAME, build_call_graph, save_call_graph
         from codesage.hierarchy import build_hierarchy_chunks
 
         repo_path = Path(args.repo_path)
         chunks = build_hierarchy_chunks(repo_path)
         save_chunks(chunks, repo_path / HIERARCHY_INDEX_FILENAME)
-        print(f"Indexed {len(chunks)} chunks from {repo_path} (hierarchical, no API calls)")
+
+        call_sites = build_call_graph(repo_path)
+        save_call_graph(call_sites, repo_path / CALLGRAPH_FILENAME)
+
+        print(
+            f"Indexed {len(chunks)} chunks and {len(call_sites)} call sites "
+            f"from {repo_path} (hierarchical, no API calls)"
+        )
 
     elif args.command == "ask":
         repo_path = Path(args.repo)
@@ -101,6 +109,15 @@ def main() -> None:
                     "continuing with list_files/read_file only)",
                     file=sys.stderr,
                 )
+
+        from codesage.callgraph import CALLGRAPH_FILENAME, load_call_graph
+        from codesage.tools import make_find_callees_tool, make_find_callers_tool
+
+        callgraph_path = repo_path / CALLGRAPH_FILENAME
+        if callgraph_path.exists():
+            call_sites = load_call_graph(callgraph_path)
+            registry.register(make_find_callers_tool(call_sites))
+            registry.register(make_find_callees_tool(call_sites))
 
         agent = Agent(llm, tools=registry)
         print(agent.ask(args.question))

@@ -37,6 +37,20 @@ def test_call_unknown_tool_raises_key_error():
         registry.call("nope")
 
 
+def test_call_tool_whose_own_parameter_is_named_name():
+    registry = ToolRegistry()
+    registry.register(
+        Tool(
+            name="find_callers",
+            description="",
+            parameters_schema={"type": "object", "properties": {"name": {"type": "string"}}},
+            handler=lambda name: f"callers of {name}",
+        )
+    )
+
+    assert registry.call("find_callers", name="mount") == "callers of mount"
+
+
 def test_has_tools_reflects_registration_state():
     registry = ToolRegistry()
     assert registry.has_tools() is False

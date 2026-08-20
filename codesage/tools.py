@@ -43,7 +43,7 @@ class ToolRegistry:
             raise KeyError(f"No tool registered with name '{name}'")
         return self._tools[name]
 
-    def call(self, name: str, **kwargs) -> str:
+    def call(self, name: str, /, **kwargs) -> str:
         return self.get(name).handler(**kwargs)
 
     def has_tools(self) -> bool:
