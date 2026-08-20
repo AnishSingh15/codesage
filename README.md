@@ -1,5 +1,8 @@
 # CodeSage
 
+![CI](https://github.com/AnishSingh15/codesage/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.13%2B-blue)
+
 An AI agent that answers questions about a codebase — citing exact
 files and line ranges — built from scratch in Python (no LangGraph,
 no CrewAI) so every piece of "how agents work" is code you can read,
@@ -18,18 +21,51 @@ codesage ingest target_repo
 codesage ask "how does the retry logic work?" --repo target_repo
 ```
 
+## Architecture diagram
+
+```mermaid
+graph TD
+    CLI["CLI: ingest / ask / eval / onboard"]
+    Agent["Agent (ReAct state machine)"]
+    Memory["Memory (sliding window)"]
+    Tools["ToolRegistry: list_files, read_file, search_code, repo_tree"]
+    Index["RetrievalIndex (cosine similarity)"]
+    LLM["LLMClient (Gemini)"]
+
+    CLI -->|ask / eval| Agent
+    Agent --> Memory
+    Agent --> Tools
+    Agent --> LLM
+    Tools --> Index
+
+    subgraph Onboard["codesage onboard (multi-agent)"]
+        Structure["Structure Agent"]
+        Explorer["Explorer Agent"]
+        Writer["Writer Agent"]
+        Structure -->|structure summary| Explorer
+        Explorer -->|code summary| Writer
+        Writer --> Output["ONBOARDING.md"]
+    end
+
+    CLI -->|onboard| Structure
+    Structure -.->|is an| Agent
+    Explorer -.->|is an| Agent
+    Writer -.->|is an| Agent
+```
+
 ## Architecture
 
 | Module | Responsibility |
 |---|---|
 | `llm.py` | Only module that talks to Gemini. Wraps `generate` (with tool calling) and `embed`, with rate-limit-aware retry. |
-| `tools.py` | `ToolRegistry` — a `dict[str, Tool]` the agent dispatches through by name. |
+| `tools.py` | `ToolRegistry` — a `dict[str, Tool]` the agent dispatches through by name. Also `build_base_registry` (shared tool set) and `repo_tree` (recursive directory view). |
 | `memory.py` | Bounded conversation history (`deque(maxlen=...)` sliding window). |
 | `ingest.py` | Walks a repo, splits files into line-window chunks, embeds each one (rate-limited to stay under free-tier quota). |
 | `index.py` | Brute-force cosine-similarity search over chunk vectors (`numpy`), plus JSON persistence between CLI runs. |
 | `agent.py` | The agent loop, as an explicit state machine: `THINKING -> ACTING -> THINKING -> ... -> DONE` (or `ERROR` after `max_steps`). |
 | `eval.py` | Retrieval hit-rate + answer-keyword scoring against a fixed case set (`eval_cases.json`). Builds a fresh `Agent` per case — eval questions are independent, not a conversation. |
-| `cli.py` | `codesage ingest`, `codesage ask`, `codesage eval`. |
+| `supervisor.py` | Multi-agent pipeline for `codesage onboard` — structure mapper → code explorer → writer, each a plain `Agent` instance. |
+| `cli.py` | `codesage ingest`, `codesage ask`, `codesage eval`, `codesage onboard`. |
 | `api.py` | FastAPI wrapper over the same `Agent` — the deployed demo. |
 
 ## Why brute-force retrieval, not a vector DB
@@ -109,6 +145,7 @@ cp .env.example .env   # add your GEMINI_API_KEY (free tier: https://aistudio.go
 uv run codesage ingest <path-to-a-repo>              # --delay to tune embed pacing
 uv run codesage ask "<question>" --repo <path-to-a-repo>
 uv run codesage eval --repo <path-to-a-repo>          # requires eval_cases.json
+uv run codesage onboard --repo <path-to-a-repo>       # generates ONBOARDING.md
 ```
 
 ## Testing
