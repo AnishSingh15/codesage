@@ -76,6 +76,13 @@ def main() -> None:
             f"Indexed {len(chunks)} chunks and {len(call_sites)} call sites "
             f"from {repo_path} (hierarchical, no API calls)"
         )
+        if not call_sites:
+            print(
+                "(0 call sites found — call-graph traversal currently only analyzes "
+                "Python (.py) files; find_callers/find_callees will have no data "
+                "for this repo)",
+                file=sys.stderr,
+            )
 
     elif args.command == "ask":
         repo_path = Path(args.repo)
@@ -116,8 +123,16 @@ def main() -> None:
         callgraph_path = repo_path / CALLGRAPH_FILENAME
         if callgraph_path.exists():
             call_sites = load_call_graph(callgraph_path)
-            registry.register(make_find_callers_tool(call_sites))
-            registry.register(make_find_callees_tool(call_sites))
+            if call_sites:
+                registry.register(make_find_callers_tool(call_sites))
+                registry.register(make_find_callees_tool(call_sites))
+            else:
+                print(
+                    f"(call graph at {callgraph_path} has no data — call-graph "
+                    "traversal currently only analyzes Python (.py) files; "
+                    "continuing without find_callers/find_callees)",
+                    file=sys.stderr,
+                )
 
         agent = Agent(llm, tools=registry)
         print(agent.ask(args.question))
