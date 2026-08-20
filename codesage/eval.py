@@ -4,10 +4,10 @@ Two proxies, both cheap and deterministic:
 - retrieval hit-rate: did we retrieve a chunk from the file we expected?
 - answer score: fraction of expected keywords present in the final answer.
 
-score_retrieval takes an `index` with a `.search(query_vector, k) -> list[Chunk]`
-method — RetrievalIndex satisfies that shape today. A second retrieval
-strategy could be swapped in here without changing this file (Strategy
-pattern), if one is ever built.
+score_retrieval calls `index.search(question, llm, k) -> list[Chunk]` — a
+shape both VectorRetrievalStrategy (index.py) and HierarchicalIndex
+(hierarchy.py) implement, so this file needs no changes to score either
+retrieval strategy.
 """
 
 import json
@@ -28,8 +28,7 @@ def load_cases(path: Path) -> list[EvalCase]:
 
 
 def score_retrieval(index, llm, case: EvalCase) -> bool:
-    query_vector = llm.embed(case.question)
-    results = index.search(query_vector, k=5)
+    results = index.search(case.question, llm, k=5)
     return any(case.expected_file_substring in c.file_path for c in results)
 
 

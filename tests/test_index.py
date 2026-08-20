@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from codesage.ingest import Chunk
-from codesage.index import RetrievalIndex, save_chunks, load_chunks
+from codesage.index import RetrievalIndex, VectorRetrievalStrategy, save_chunks, load_chunks
 
 
 def _chunk(name: str, vector: list[float]) -> Chunk:
@@ -36,3 +36,18 @@ def test_save_and_load_chunks_round_trip(tmp_path: Path):
 
     assert loaded == chunks
     assert json.loads(path.read_text())[0]["file_path"] == "auth.py"
+
+
+def test_vector_retrieval_strategy_embeds_query_then_searches():
+    chunks = [_chunk("auth", [1.0, 0.0, 0.0])]
+    index = RetrievalIndex(chunks)
+    strategy = VectorRetrievalStrategy(index)
+
+    class FakeLLM:
+        def embed(self, text, output_dimensionality=768):
+            assert text == "how does auth work?"
+            return [1.0, 0.0, 0.0]
+
+    results = strategy.search("how does auth work?", FakeLLM(), k=1)
+
+    assert results == [chunks[0]]

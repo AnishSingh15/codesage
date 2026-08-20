@@ -30,6 +30,7 @@ graph TD
     Memory["Memory (sliding window)"]
     Tools["ToolRegistry: list_files, read_file, search_code, repo_tree"]
     Index["RetrievalIndex (cosine similarity)"]
+    Hierarchy["HierarchicalIndex (AST + reasoning)"]
     LLM["LLMClient (Gemini)"]
 
     CLI -->|ask / eval| Agent
@@ -37,6 +38,7 @@ graph TD
     Agent --> Tools
     Agent --> LLM
     Tools --> Index
+    Tools -.->|alt strategy| Hierarchy
 
     subgraph Onboard["codesage onboard (multi-agent)"]
         Structure["Structure Agent"]
@@ -61,11 +63,12 @@ graph TD
 | `tools.py` | `ToolRegistry` — a `dict[str, Tool]` the agent dispatches through by name. Also `build_base_registry` (shared tool set) and `repo_tree` (recursive directory view). |
 | `memory.py` | Bounded conversation history (`deque(maxlen=...)` sliding window). |
 | `ingest.py` | Walks a repo, splits files into line-window chunks, embeds each one (rate-limited to stay under free-tier quota). |
-| `index.py` | Brute-force cosine-similarity search over chunk vectors (`numpy`), plus JSON persistence between CLI runs. |
+| `index.py` | Brute-force cosine-similarity search over chunk vectors (`numpy`), plus JSON persistence between CLI runs. `VectorRetrievalStrategy` adapts it to the common `search(query, llm, k)` shape both strategies share. |
+| `hierarchy.py` | AST-based "vectorless" retrieval — `build_hierarchy_chunks` (zero LLM calls) + `HierarchicalIndex` (one reasoning call per query). |
 | `agent.py` | The agent loop, as an explicit state machine: `THINKING -> ACTING -> THINKING -> ... -> DONE` (or `ERROR` after `max_steps`). |
 | `eval.py` | Retrieval hit-rate + answer-keyword scoring against a fixed case set (`eval_cases.json`). Builds a fresh `Agent` per case — eval questions are independent, not a conversation. |
 | `supervisor.py` | Multi-agent pipeline for `codesage onboard` — structure mapper → code explorer → writer, each a plain `Agent` instance. |
-| `cli.py` | `codesage ingest`, `codesage ask`, `codesage eval`, `codesage onboard`. |
+| `cli.py` | `codesage ingest`, `codesage ingest-hierarchy`, `codesage ask`, `codesage eval`, `codesage onboard`. |
 | `api.py` | FastAPI wrapper over the same `Agent` — the deployed demo. |
 
 ## Why brute-force retrieval, not a vector DB
@@ -74,6 +77,48 @@ At the scale of one repo (hundreds to low thousands of chunks),
 brute-force cosine similarity via `numpy` is O(n) per query and fast
 enough. A real production system at millions of vectors would use an
 ANN index (e.g. HNSW) — a deliberate simplification, not an oversight.
+
+## Two retrieval strategies, compared
+
+CodeSage ships two retrieval strategies, selectable per-query:
+
+- **`vector`** (default) — brute-force cosine similarity over embedded
+  chunks (see above).
+- **`hierarchy`** — "vectorless" retrieval. `codesage/hierarchy.py` uses
+  Python's `ast` module to extract each file's structure (module
+  docstring, every top-level function/class with its docstring and
+  exact line span) with **zero LLM calls**. At query time, one
+  `generate()` call shows the model that structure as a table of
+  contents and asks which entries are relevant — reasoning-based
+  navigation instead of nearest-neighbor search, in the spirit of
+  PageIndex-style "vectorless RAG."
+
+Both strategies expose the same `search(query, llm, k) -> list[Chunk]`
+shape (see `VectorRetrievalStrategy` in `index.py`), so `eval.py` scores
+either one identically, and the agent's tool-calling loop never needs to
+know which is active.
+
+Real comparison, same `eval_cases.json` questions, same target repo:
+
+```bash
+uv run codesage ingest target_repo/src
+uv run codesage ingest-hierarchy target_repo/src
+uv run codesage eval --repo target_repo/src --compare
+```
+
+```
+Strategy    Retrieval hit rate    Avg answer score
+vector      100%                  100%
+hierarchy   100%                  100%
+```
+
+Both strategies score identically on this eval set — a genuinely strong
+result for `hierarchy` specifically, since it makes zero embedding calls
+at ingest time. Worth being honest about the sample size, though: this
+is 5 questions against one well-organized, well-documented library. A
+larger or messier eval set / codebase would likely separate the two
+strategies more; this result shows they're *comparable*, not that
+`hierarchy` is strictly as good in general.
 
 ## Why no agent framework
 
@@ -143,8 +188,9 @@ cp .env.example .env   # add your GEMINI_API_KEY (free tier: https://aistudio.go
 
 ```bash
 uv run codesage ingest <path-to-a-repo>              # --delay to tune embed pacing
-uv run codesage ask "<question>" --repo <path-to-a-repo>
-uv run codesage eval --repo <path-to-a-repo>          # requires eval_cases.json
+uv run codesage ingest-hierarchy <path-to-a-repo>     # zero-cost structural index
+uv run codesage ask "<question>" --repo <path-to-a-repo> --strategy hierarchy
+uv run codesage eval --repo <path-to-a-repo> --compare # scores both strategies
 uv run codesage onboard --repo <path-to-a-repo>       # generates ONBOARDING.md
 ```
 

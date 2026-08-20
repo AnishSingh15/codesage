@@ -66,3 +66,17 @@ def test_ingest_repo_stores_paths_relative_to_repo_root(tmp_path: Path):
     chunks = ingest_repo(tmp_path, FakeLLM(), delay_seconds=0)
 
     assert chunks[0].file_path == "sub/b.py"
+
+
+def test_chunk_name_and_docstring_default_to_none():
+    chunk = Chunk(text="x = 1", file_path="a.py", line_start=1, line_end=1)
+
+    assert chunk.name is None
+    assert chunk.docstring is None
+
+
+def test_chunk_accepts_name_and_docstring():
+    chunk = Chunk(text="x = 1", file_path="a.py", line_start=1, line_end=1, name="foo", docstring="Does foo.")
+
+    assert chunk.name == "foo"
+    assert chunk.docstring == "Does foo."

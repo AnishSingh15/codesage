@@ -2,7 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler, repo_tree_handler
+from codesage.hierarchy import HierarchicalIndex
+from codesage.ingest import Chunk
+from codesage.tools import (
+    Tool,
+    ToolRegistry,
+    list_files_handler,
+    read_file_handler,
+    repo_tree_handler,
+    make_hierarchical_search_tool,
+)
 
 
 def test_register_and_call_a_tool():
@@ -93,3 +102,28 @@ def test_repo_tree_handler_truncates_past_200_entries(tmp_path: Path):
 def test_repo_tree_handler_blocks_path_escape(tmp_path: Path):
     result = repo_tree_handler(tmp_path, "../../etc")
     assert result.startswith("Error")
+
+
+def test_make_hierarchical_search_tool_returns_citation_formatted_results():
+    chunk = Chunk(text="def login(): ...", file_path="auth.py", line_start=3, line_end=5, name="login")
+    index = HierarchicalIndex([chunk])
+
+    class FakeLLM:
+        def generate(self, contents, tools=None):
+            from types import SimpleNamespace
+            return SimpleNamespace(text="auth.py:login", function_calls=None)
+
+    tool = make_hierarchical_search_tool(index, FakeLLM())
+    result = tool.handler(query="how does login work?")
+
+    assert "auth.py:3-5" in result
+    assert "def login(): ..." in result
+
+
+def test_make_hierarchical_search_tool_reports_no_match():
+    index = HierarchicalIndex([])
+    tool = make_hierarchical_search_tool(index, llm=None)
+
+    result = tool.handler(query="anything")
+
+    assert result == "No matching code found."
