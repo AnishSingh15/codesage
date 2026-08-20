@@ -32,6 +32,9 @@ def main() -> None:
     eval_parser.add_argument("--repo", default=".", help="Target repo path")
     eval_parser.add_argument("--cases", default="eval_cases.json", help="Path to eval cases JSON")
 
+    onboard_parser = subparsers.add_parser("onboard")
+    onboard_parser.add_argument("--repo", default=".", help="Target repo path")
+
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -90,6 +93,15 @@ def main() -> None:
         results = run_eval(lambda: Agent(llm, tools=registry), index, llm, load_cases(cases_path))
         print(f"Retrieval hit rate: {results['retrieval_hit_rate']:.0%}")
         print(f"Avg answer score:   {results['avg_answer_score']:.0%}")
+
+    elif args.command == "onboard":
+        from codesage.supervisor import generate_onboarding_doc
+
+        repo_path = Path(args.repo)
+        doc = generate_onboarding_doc(repo_path, llm)
+        output_path = repo_path / "ONBOARDING.md"
+        output_path.write_text(doc)
+        print(f"Wrote onboarding doc to {output_path}")
 
 
 if __name__ == "__main__":
