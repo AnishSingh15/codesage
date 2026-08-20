@@ -3,7 +3,7 @@ from pathlib import Path
 
 from codesage.eval import EvalCase, load_cases, score_answer, score_retrieval, run_eval
 from codesage.ingest import Chunk
-from codesage.index import RetrievalIndex
+from codesage.index import RetrievalIndex, VectorRetrievalStrategy
 
 
 def test_load_cases_parses_json(tmp_path: Path):
@@ -27,7 +27,7 @@ def test_score_answer_is_fraction_of_keywords_present():
 
 def test_score_retrieval_true_when_expected_file_is_returned():
     chunk = Chunk(text="auth code", file_path="src/auth.py", line_start=1, line_end=5, vector=[1.0, 0.0])
-    index = RetrievalIndex([chunk])
+    index = VectorRetrievalStrategy(RetrievalIndex([chunk]))
     case = EvalCase(question="q", expected_file_substring="auth.py", expected_answer_keywords=[])
 
     class FakeLLM:
@@ -40,7 +40,7 @@ def test_score_retrieval_true_when_expected_file_is_returned():
 def test_run_eval_aggregates_scores():
     case = EvalCase(question="q", expected_file_substring="auth.py", expected_answer_keywords=["token"])
     chunk = Chunk(text="auth code", file_path="src/auth.py", line_start=1, line_end=5, vector=[1.0, 0.0])
-    index = RetrievalIndex([chunk])
+    index = VectorRetrievalStrategy(RetrievalIndex([chunk]))
 
     class FakeLLM:
         def embed(self, text, output_dimensionality=768):
@@ -61,7 +61,7 @@ def test_run_eval_builds_a_fresh_agent_per_case():
     # filled up, could corrupt the turn sequence outright. agent_factory
     # must be called once per case, not once total.
     case = EvalCase(question="q", expected_file_substring="nomatch", expected_answer_keywords=[])
-    index = RetrievalIndex([])
+    index = VectorRetrievalStrategy(RetrievalIndex([]))
 
     class FakeLLM:
         def embed(self, text, output_dimensionality=768):

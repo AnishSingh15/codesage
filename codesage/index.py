@@ -33,6 +33,22 @@ class RetrievalIndex:
         return [self._chunks[i] for i in top_k_idx]
 
 
+class VectorRetrievalStrategy:
+    """Adapts RetrievalIndex's (query_vector, k) shape to the (query, llm, k)
+    shape both retrieval strategies expose uniformly to eval.py. RetrievalIndex
+    itself stays untouched — make_search_code_tool still calls
+    RetrievalIndex.search(vector, k) directly; this adapter exists only for
+    code paths (eval.py, the eval --compare CLI flag) that need to treat both
+    strategies the same way."""
+
+    def __init__(self, index: RetrievalIndex):
+        self._index = index
+
+    def search(self, query: str, llm, k: int = 5) -> list[Chunk]:
+        query_vector = llm.embed(query)
+        return self._index.search(query_vector, k=k)
+
+
 def save_chunks(chunks: list[Chunk], path: Path) -> None:
     path.write_text(json.dumps([asdict(c) for c in chunks]))
 
