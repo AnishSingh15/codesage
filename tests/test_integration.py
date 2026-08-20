@@ -11,11 +11,10 @@ from pathlib import Path
 import pytest
 
 from codesage.agent import Agent
-from codesage.cli import build_base_registry
 from codesage.index import RetrievalIndex
 from codesage.ingest import ingest_repo
 from codesage.llm import LLMClient
-from codesage.tools import make_search_code_tool
+from codesage.tools import build_base_registry, make_search_code_tool
 
 FIXTURE_REPO = Path(__file__).parent / "fixtures" / "tiny_repo"
 

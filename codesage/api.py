@@ -62,11 +62,10 @@ def get_app() -> FastAPI:
     every time.
     """
     from codesage.agent import Agent
-    from codesage.cli import build_base_registry
     from codesage.index import INDEX_FILENAME, RetrievalIndex, load_chunks
     from codesage.ingest import ingest_repo
     from codesage.llm import LLMClient
-    from codesage.tools import make_search_code_tool
+    from codesage.tools import build_base_registry, make_search_code_tool
 
     api_key = os.environ["GEMINI_API_KEY"]
     target_repo = Path(os.environ.get("CODESAGE_TARGET_REPO", "./target_repo"))
