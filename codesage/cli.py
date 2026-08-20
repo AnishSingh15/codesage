@@ -9,43 +9,8 @@ from dotenv import load_dotenv
 
 from codesage.agent import Agent
 from codesage.llm import LLMClient
-from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler, make_search_code_tool
+from codesage.tools import build_base_registry, make_search_code_tool
 from codesage.index import INDEX_FILENAME, RetrievalIndex, load_chunks, save_chunks
-
-
-def build_base_registry(base_dir: Path) -> ToolRegistry:
-    registry = ToolRegistry()
-    registry.register(
-        Tool(
-            name="list_files",
-            description="List files under a directory relative to the target repo root.",
-            parameters_schema={
-                "type": "object",
-                "properties": {"subdir": {"type": "string", "description": "Relative subdirectory, use '.' for root"}},
-                "required": ["subdir"],
-            },
-            handler=lambda subdir: list_files_handler(base_dir, subdir),
-        )
-    )
-    registry.register(
-        Tool(
-            name="read_file",
-            description="Read a file's contents by path relative to the target repo root, optionally a line range.",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "start_line": {"type": "integer"},
-                    "end_line": {"type": "integer"},
-                },
-                "required": ["path"],
-            },
-            handler=lambda path, start_line=None, end_line=None: read_file_handler(
-                base_dir, path, start_line, end_line
-            ),
-        )
-    )
-    return registry
 
 
 def main() -> None:
@@ -66,6 +31,9 @@ def main() -> None:
     eval_parser = subparsers.add_parser("eval")
     eval_parser.add_argument("--repo", default=".", help="Target repo path")
     eval_parser.add_argument("--cases", default="eval_cases.json", help="Path to eval cases JSON")
+
+    onboard_parser = subparsers.add_parser("onboard")
+    onboard_parser.add_argument("--repo", default=".", help="Target repo path")
 
     args = parser.parse_args()
 
@@ -125,6 +93,15 @@ def main() -> None:
         results = run_eval(lambda: Agent(llm, tools=registry), index, llm, load_cases(cases_path))
         print(f"Retrieval hit rate: {results['retrieval_hit_rate']:.0%}")
         print(f"Avg answer score:   {results['avg_answer_score']:.0%}")
+
+    elif args.command == "onboard":
+        from codesage.supervisor import generate_onboarding_doc
+
+        repo_path = Path(args.repo)
+        doc = generate_onboarding_doc(repo_path, llm)
+        output_path = repo_path / "ONBOARDING.md"
+        output_path.write_text(doc)
+        print(f"Wrote onboarding doc to {output_path}")
 
 
 if __name__ == "__main__":

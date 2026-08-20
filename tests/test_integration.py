@@ -11,13 +11,14 @@ from pathlib import Path
 import pytest
 
 from codesage.agent import Agent
-from codesage.cli import build_base_registry
 from codesage.index import RetrievalIndex
 from codesage.ingest import ingest_repo
 from codesage.llm import LLMClient
-from codesage.tools import make_search_code_tool
+from codesage.supervisor import generate_onboarding_doc
+from codesage.tools import build_base_registry, make_search_code_tool
 
 FIXTURE_REPO = Path(__file__).parent / "fixtures" / "tiny_repo"
+TARGET_REPO_SRC = Path(__file__).parent.parent / "target_repo" / "src"
 
 
 @pytest.mark.integration
@@ -37,3 +38,17 @@ def test_agent_answers_question_about_fixture_repo_with_citation():
     answer = agent.ask("What does the is_even function do?")
 
     assert "even" in answer.lower()
+
+
+@pytest.mark.integration
+def test_generate_onboarding_doc_against_real_repo():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        pytest.skip("GEMINI_API_KEY not set")
+    if not TARGET_REPO_SRC.exists():
+        pytest.skip("target_repo/src not present locally")
+
+    llm = LLMClient(api_key=api_key)
+    doc = generate_onboarding_doc(TARGET_REPO_SRC, llm)
+
+    assert "requests" in doc.lower()

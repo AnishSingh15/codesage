@@ -11,6 +11,7 @@ from typing import Callable
 from google.genai import types
 
 from codesage.index import RetrievalIndex
+from codesage.ingest import SKIP_DIRS
 
 
 @dataclass
@@ -80,6 +81,42 @@ def read_file_handler(
     return "\n".join(lines[start:end])
 
 
+_MAX_TREE_ENTRIES = 200
+
+
+def repo_tree_handler(base_dir: Path, subdir: str = ".") -> str:
+    target = (base_dir / subdir).resolve()
+    if not str(target).startswith(str(Path(base_dir).resolve())):
+        return "Error: path escapes the target repo."
+    if not target.exists():
+        return f"Error: {subdir} does not exist."
+
+    lines: list[str] = []
+    count = 0
+    truncated = False
+
+    def walk(dir_path: Path, prefix: str) -> None:
+        nonlocal count, truncated
+        if truncated:
+            return
+        entries = sorted(dir_path.iterdir(), key=lambda p: (p.is_file(), p.name))
+        for entry in entries:
+            if entry.is_dir() and entry.name in SKIP_DIRS:
+                continue
+            if count >= _MAX_TREE_ENTRIES:
+                truncated = True
+                return
+            lines.append(f"{prefix}{entry.name}{'/' if entry.is_dir() else ''}")
+            count += 1
+            if entry.is_dir():
+                walk(entry, prefix + "  ")
+
+    walk(target, "")
+    if truncated:
+        lines.append("... (truncated)")
+    return "\n".join(lines) if lines else "(empty directory)"
+
+
 def make_search_code_tool(index: RetrievalIndex, llm) -> Tool:
     def handler(query: str) -> str:
         query_vector = llm.embed(query)
@@ -98,3 +135,38 @@ def make_search_code_tool(index: RetrievalIndex, llm) -> Tool:
         },
         handler=handler,
     )
+
+
+def build_base_registry(base_dir: Path) -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(
+        Tool(
+            name="list_files",
+            description="List files under a directory relative to the target repo root.",
+            parameters_schema={
+                "type": "object",
+                "properties": {"subdir": {"type": "string", "description": "Relative subdirectory, use '.' for root"}},
+                "required": ["subdir"],
+            },
+            handler=lambda subdir: list_files_handler(base_dir, subdir),
+        )
+    )
+    registry.register(
+        Tool(
+            name="read_file",
+            description="Read a file's contents by path relative to the target repo root, optionally a line range.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "start_line": {"type": "integer"},
+                    "end_line": {"type": "integer"},
+                },
+                "required": ["path"],
+            },
+            handler=lambda path, start_line=None, end_line=None: read_file_handler(
+                base_dir, path, start_line, end_line
+            ),
+        )
+    )
+    return registry

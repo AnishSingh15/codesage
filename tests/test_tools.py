@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler
+from codesage.tools import Tool, ToolRegistry, list_files_handler, read_file_handler, repo_tree_handler
 
 
 def test_register_and_call_a_tool():
@@ -54,3 +54,42 @@ def test_read_file_handler_returns_requested_line_range(tmp_path: Path):
     result = read_file_handler(tmp_path, "f.py", start_line=2, end_line=3)
 
     assert result == "line2\nline3"
+
+
+def test_repo_tree_handler_shows_nested_structure(tmp_path: Path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text("x = 1")
+    (tmp_path / "readme.md").write_text("# hi")
+
+    result = repo_tree_handler(tmp_path, ".")
+
+    assert "pkg/" in result
+    assert "mod.py" in result
+    assert "readme.md" in result
+
+
+def test_repo_tree_handler_skips_skip_dirs(tmp_path: Path):
+    (tmp_path / "a.py").write_text("x = 1")
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text("ignored")
+
+    result = repo_tree_handler(tmp_path, ".")
+
+    assert ".git" not in result
+    assert "config" not in result
+
+
+def test_repo_tree_handler_truncates_past_200_entries(tmp_path: Path):
+    for i in range(250):
+        (tmp_path / f"file_{i:03d}.py").write_text("x = 1")
+
+    result = repo_tree_handler(tmp_path, ".")
+
+    assert "... (truncated)" in result
+    assert result.count("file_") == 200
+
+
+def test_repo_tree_handler_blocks_path_escape(tmp_path: Path):
+    result = repo_tree_handler(tmp_path, "../../etc")
+    assert result.startswith("Error")
