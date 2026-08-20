@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from codesage.callgraph import CallSite
 from codesage.hierarchy import HierarchicalIndex
 from codesage.ingest import Chunk
 from codesage.tools import (
@@ -11,6 +12,8 @@ from codesage.tools import (
     read_file_handler,
     repo_tree_handler,
     make_hierarchical_search_tool,
+    make_find_callers_tool,
+    make_find_callees_tool,
 )
 
 
@@ -127,3 +130,43 @@ def test_make_hierarchical_search_tool_reports_no_match():
     result = tool.handler(query="anything")
 
     assert result == "No matching code found."
+
+
+def test_make_find_callers_tool_lists_call_sites():
+    call_sites = [
+        CallSite(caller_name="__init__", caller_file="sessions.py", caller_line=10, called_name="mount"),
+        CallSite(caller_name="request", caller_file="sessions.py", caller_line=50, called_name="send"),
+    ]
+    tool = make_find_callers_tool(call_sites)
+
+    result = tool.handler(name="mount")
+
+    assert result == "sessions.py:10 (inside __init__)"
+
+
+def test_make_find_callers_tool_reports_no_match():
+    tool = make_find_callers_tool([])
+
+    result = tool.handler(name="anything")
+
+    assert result == "No callers found for 'anything'."
+
+
+def test_make_find_callees_tool_lists_calls():
+    call_sites = [
+        CallSite(caller_name="__init__", caller_file="sessions.py", caller_line=10, called_name="mount"),
+        CallSite(caller_name="__init__", caller_file="sessions.py", caller_line=11, called_name="mount"),
+    ]
+    tool = make_find_callees_tool(call_sites)
+
+    result = tool.handler(name="__init__")
+
+    assert result == "mount (at sessions.py:10)\nmount (at sessions.py:11)"
+
+
+def test_make_find_callees_tool_reports_no_match():
+    tool = make_find_callees_tool([])
+
+    result = tool.handler(name="anything")
+
+    assert result == "No calls found inside 'anything'."

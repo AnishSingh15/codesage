@@ -10,6 +10,7 @@ from typing import Callable
 
 from google.genai import types
 
+from codesage.callgraph import CallSite, find_callees, find_callers
 from codesage.hierarchy import HierarchicalIndex
 from codesage.index import RetrievalIndex
 from codesage.ingest import SKIP_DIRS
@@ -194,3 +195,45 @@ def build_base_registry(base_dir: Path) -> ToolRegistry:
         )
     )
     return registry
+
+
+def make_find_callers_tool(call_sites: list[CallSite]) -> Tool:
+    def handler(name: str) -> str:
+        results = find_callers(call_sites, name)
+        if not results:
+            return f"No callers found for '{name}'."
+        return "\n".join(f"{cs.caller_file}:{cs.caller_line} (inside {cs.caller_name})" for cs in results)
+
+    return Tool(
+        name="find_callers",
+        description=(
+            "Find every call site across the repo where a function or method "
+            "named X is called. Name-based: matches by simple name, not a "
+            "fully resolved reference."
+        ),
+        parameters_schema={
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "The function or method name to find callers of"}},
+            "required": ["name"],
+        },
+        handler=handler,
+    )
+
+
+def make_find_callees_tool(call_sites: list[CallSite]) -> Tool:
+    def handler(name: str) -> str:
+        results = find_callees(call_sites, name)
+        if not results:
+            return f"No calls found inside '{name}'."
+        return "\n".join(f"{cs.called_name} (at {cs.caller_file}:{cs.caller_line})" for cs in results)
+
+    return Tool(
+        name="find_callees",
+        description="Find every function/method call made inside a given function or method, across the repo.",
+        parameters_schema={
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "The function or method name to find calls made from"}},
+            "required": ["name"],
+        },
+        handler=handler,
+    )
