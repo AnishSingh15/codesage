@@ -22,6 +22,8 @@ class Chunk:
     line_start: int
     line_end: int
     vector: list[float] | None = None
+    name: str | None = None
+    docstring: str | None = None
 
 
 def iter_source_files(repo_path: Path) -> Iterator[Path]:
