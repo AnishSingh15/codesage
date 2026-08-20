@@ -161,6 +161,27 @@ Real output against `psf/requests`:
 > they want to register custom connection adapters to specific URL
 > prefixes on a session (e.g., `session.mount('https://', MyCustomAdapter())`).
 
+**Tested against something bigger and messier than `requests`:** cloned
+Django's source (900+ files, 165K lines) and ran the same commands. It
+indexed 37,005 call sites in under 3 seconds, zero API calls. A common
+method name like `save()` naturally shows up across 32 unrelated files
+(forms, querysets, sessions, admin) — the name-based-matching tradeoff
+above, made concrete at scale. Asked against that ambiguity, the agent
+correctly flagged it and grouped results by subsystem instead of
+conflating them; asked about a less common name (`check_password`), it
+came back with 3 exact, correct call sites.
+
+**Scope: Python only, and it says so.** `build_call_graph` uses Python's
+`ast` module, so it only ever sees `.py` files. Point it at a non-Python
+repo and `ingest-hierarchy` reports `0 call sites found` up front; `ask`
+then skips registering `find_callers`/`find_callees` entirely rather than
+offering tools with nothing behind them — the model gets a clear stderr
+message explaining why, instead of a misleading "no callers found" that
+looks like a real (if boring) answer. Retrieval (`vector`/`hierarchy`) is
+unaffected by this — both chunk and embed plain text, so they already
+work on any language; call-graph traversal is the one piece that doesn't,
+today.
+
 ## Why no agent framework
 
 LangGraph/CrewAI would hide the state machine, memory, and tool
