@@ -30,9 +30,10 @@ graph TD
     CLI["CLI: ingest / ask / eval / onboard"]
     Agent["Agent (ReAct state machine)"]
     Memory["Memory (sliding window)"]
-    Tools["ToolRegistry: list_files, read_file, search_code, repo_tree"]
+    Tools["ToolRegistry: list_files, read_file, search_code, repo_tree, find_callers, find_callees"]
     Index["RetrievalIndex (cosine similarity)"]
     Hierarchy["HierarchicalIndex (AST + reasoning)"]
+    CallGraph["callgraph.py (AST, zero LLM calls)"]
     LLM["LLMClient (Gemini)"]
 
     CLI -->|ask / eval| Agent
@@ -41,6 +42,7 @@ graph TD
     Agent --> LLM
     Tools --> Index
     Tools -.->|alt strategy| Hierarchy
+    Tools --> CallGraph
 
     subgraph Onboard["codesage onboard (multi-agent)"]
         Structure["Structure Agent"]
@@ -67,6 +69,7 @@ graph TD
 | `ingest.py` | Walks a repo, splits files into line-window chunks, embeds each one (rate-limited to stay under free-tier quota). |
 | `index.py` | Brute-force cosine-similarity search over chunk vectors (`numpy`), plus JSON persistence between CLI runs. `VectorRetrievalStrategy` adapts it to the common `search(query, llm, k)` shape both strategies share. |
 | `hierarchy.py` | AST-based "vectorless" retrieval — `build_hierarchy_chunks` (zero LLM calls) + `HierarchicalIndex` (one reasoning call per query). |
+| `callgraph.py` | Cross-file call-graph traversal — `build_call_graph` (zero LLM calls) + `find_callers`/`find_callees` (zero LLM calls at query time too — exact filters, not reasoning). |
 | `agent.py` | The agent loop, as an explicit state machine: `THINKING -> ACTING -> THINKING -> ... -> DONE` (or `ERROR` after `max_steps`). |
 | `eval.py` | Retrieval hit-rate + answer-keyword scoring against a fixed case set (`eval_cases.json`). Builds a fresh `Agent` per case — eval questions are independent, not a conversation. |
 | `supervisor.py` | Multi-agent pipeline for `codesage onboard` — structure mapper → code explorer → writer, each a plain `Agent` instance. |
@@ -121,6 +124,42 @@ is 5 questions against one well-organized, well-documented library. A
 larger or messier eval set / codebase would likely separate the two
 strategies more; this result shows they're *comparable*, not that
 `hierarchy` is strictly as good in general.
+
+## Call-graph traversal — "who calls X"
+
+Neither retrieval strategy above can answer "find every function that
+calls X" — vector similarity finds things that *read* similarly, and
+`hierarchy`'s table of contents only sees structure *within* one file.
+`codesage/callgraph.py` fills that specific gap: it walks every file with
+an `ast.NodeVisitor`, tracking which function it's currently inside on a
+stack, and records a `CallSite` for every call encountered — zero LLM
+calls to build, zero LLM calls to query (`find_callers`/`find_callees`
+are exact filters, not reasoning).
+
+This is name-based, not import-resolved: it matches by simple name, so
+two unrelated `close()` methods in different classes both show up as
+"callers of close." That's a deliberate v1 tradeoff, not a hidden gap —
+real reference resolution is what tools like Jedi exist for.
+
+```bash
+uv run codesage ingest-hierarchy target_repo/src   # builds the call graph too, same pass
+uv run codesage ask "What calls the mount method?" --repo target_repo/src
+```
+
+Real output against `psf/requests`:
+
+> The `mount` method in `requests.sessions.Session` is called internally
+> within the **`Session.__init__`** constructor (in `requests/sessions.py`)
+> to register the default connection adapters for HTTP and HTTPS:
+>
+> ```python
+> self.mount("https://", HTTPAdapter())
+> self.mount("http://", HTTPAdapter())
+> ```
+>
+> It is also typically called by users of the `requests` library when
+> they want to register custom connection adapters to specific URL
+> prefixes on a session (e.g., `session.mount('https://', MyCustomAdapter())`).
 
 ## Why no agent framework
 
@@ -190,7 +229,7 @@ cp .env.example .env   # add your GEMINI_API_KEY (free tier: https://aistudio.go
 
 ```bash
 uv run codesage ingest <path-to-a-repo>              # --delay to tune embed pacing
-uv run codesage ingest-hierarchy <path-to-a-repo>     # zero-cost structural index
+uv run codesage ingest-hierarchy <path-to-a-repo>     # zero-cost structural index + call graph
 uv run codesage ask "<question>" --repo <path-to-a-repo> --strategy hierarchy
 uv run codesage eval --repo <path-to-a-repo> --compare # scores both strategies
 uv run codesage onboard --repo <path-to-a-repo>       # generates ONBOARDING.md
