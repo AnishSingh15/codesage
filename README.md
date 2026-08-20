@@ -3,6 +3,8 @@
 ![CI](https://github.com/AnishSingh15/codesage/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 
+![CodeSage architecture](assets/architecture-diagram.png)
+
 An AI agent that answers questions about a codebase — citing exact
 files and line ranges — built from scratch in Python (no LangGraph,
 no CrewAI) so every piece of "how agents work" is code you can read,
