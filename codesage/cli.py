@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from codesage.agent import Agent
 from codesage.llm import LLMClient
 from codesage.tools import build_base_registry, make_search_code_tool
-from codesage.index import INDEX_FILENAME, RetrievalIndex, load_chunks, save_chunks
+from codesage.index import HIERARCHY_INDEX_FILENAME, INDEX_FILENAME, RetrievalIndex, load_chunks, save_chunks
 
 
 def main() -> None:
@@ -24,9 +24,15 @@ def main() -> None:
         "--delay", type=float, default=0.5, help="Seconds to sleep between embed calls (rate-limit mitigation)"
     )
 
+    ingest_hierarchy_parser = subparsers.add_parser("ingest-hierarchy")
+    ingest_hierarchy_parser.add_argument("repo_path")
+
     ask_parser = subparsers.add_parser("ask")
     ask_parser.add_argument("question")
     ask_parser.add_argument("--repo", default=".", help="Target repo path")
+    ask_parser.add_argument(
+        "--strategy", choices=["vector", "hierarchy"], default="vector", help="Retrieval strategy"
+    )
 
     eval_parser = subparsers.add_parser("eval")
     eval_parser.add_argument("--repo", default=".", help="Target repo path")
@@ -52,21 +58,46 @@ def main() -> None:
         save_chunks(chunks, repo_path / INDEX_FILENAME)
         print(f"Indexed {len(chunks)} chunks from {repo_path}")
 
+    elif args.command == "ingest-hierarchy":
+        from codesage.hierarchy import build_hierarchy_chunks
+
+        repo_path = Path(args.repo_path)
+        chunks = build_hierarchy_chunks(repo_path)
+        save_chunks(chunks, repo_path / HIERARCHY_INDEX_FILENAME)
+        print(f"Indexed {len(chunks)} chunks from {repo_path} (hierarchical, no API calls)")
+
     elif args.command == "ask":
         repo_path = Path(args.repo)
         registry = build_base_registry(repo_path)
 
-        index_path = repo_path / INDEX_FILENAME
-        if index_path.exists():
-            chunks = load_chunks(index_path)
-            index = RetrievalIndex(chunks)
-            registry.register(make_search_code_tool(index, llm))
+        if args.strategy == "vector":
+            index_path = repo_path / INDEX_FILENAME
+            if index_path.exists():
+                chunks = load_chunks(index_path)
+                index = RetrievalIndex(chunks)
+                registry.register(make_search_code_tool(index, llm))
+            else:
+                print(
+                    f"(no index found at {index_path} — run 'codesage ingest {repo_path}' "
+                    "for retrieval-backed answers; continuing with list_files/read_file only)",
+                    file=sys.stderr,
+                )
         else:
-            print(
-                f"(no index found at {index_path} — run 'codesage ingest {repo_path}' "
-                "for retrieval-backed answers; continuing with list_files/read_file only)",
-                file=sys.stderr,
-            )
+            from codesage.hierarchy import HierarchicalIndex
+            from codesage.tools import make_hierarchical_search_tool
+
+            hierarchy_index_path = repo_path / HIERARCHY_INDEX_FILENAME
+            if hierarchy_index_path.exists():
+                chunks = load_chunks(hierarchy_index_path)
+                hierarchy_index = HierarchicalIndex(chunks)
+                registry.register(make_hierarchical_search_tool(hierarchy_index, llm))
+            else:
+                print(
+                    f"(no hierarchy index found at {hierarchy_index_path} — run "
+                    f"'codesage ingest-hierarchy {repo_path}' for retrieval-backed answers; "
+                    "continuing with list_files/read_file only)",
+                    file=sys.stderr,
+                )
 
         agent = Agent(llm, tools=registry)
         print(agent.ask(args.question))
