@@ -15,6 +15,7 @@ import numpy as np
 from codesage.ingest import Chunk
 
 INDEX_FILENAME = ".codesage_index.json"
+HIERARCHY_INDEX_FILENAME = ".codesage_hierarchy_index.json"
 
 
 class RetrievalIndex:

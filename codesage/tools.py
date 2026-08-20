@@ -10,6 +10,7 @@ from typing import Callable
 
 from google.genai import types
 
+from codesage.hierarchy import HierarchicalIndex
 from codesage.index import RetrievalIndex
 from codesage.ingest import SKIP_DIRS
 
@@ -128,6 +129,29 @@ def make_search_code_tool(index: RetrievalIndex, llm) -> Tool:
     return Tool(
         name="search_code",
         description="Semantic search over the ingested codebase. Returns relevant code chunks with file/line citations.",
+        parameters_schema={
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "What to search for"}},
+            "required": ["query"],
+        },
+        handler=handler,
+    )
+
+
+def make_hierarchical_search_tool(index: HierarchicalIndex, llm) -> Tool:
+    def handler(query: str) -> str:
+        results = index.search(query, llm, k=5)
+        if not results:
+            return "No matching code found."
+        return "\n\n".join(f"{c.file_path}:{c.line_start}-{c.line_end}\n{c.text}" for c in results)
+
+    return Tool(
+        name="search_code",
+        description=(
+            "Structure-based search over the ingested codebase (navigates a "
+            "table of contents via reasoning, not embeddings). Returns "
+            "relevant code chunks with file/line citations."
+        ),
         parameters_schema={
             "type": "object",
             "properties": {"query": {"type": "string", "description": "What to search for"}},
