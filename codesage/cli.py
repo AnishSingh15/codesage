@@ -37,6 +37,9 @@ def main() -> None:
     eval_parser = subparsers.add_parser("eval")
     eval_parser.add_argument("--repo", default=".", help="Target repo path")
     eval_parser.add_argument("--cases", default="eval_cases.json", help="Path to eval cases JSON")
+    eval_parser.add_argument(
+        "--compare", action="store_true", help="Run against both retrieval strategies and compare"
+    )
 
     onboard_parser = subparsers.add_parser("onboard")
     onboard_parser.add_argument("--repo", default=".", help="Target repo path")
@@ -104,30 +107,71 @@ def main() -> None:
 
     elif args.command == "eval":
         from codesage.eval import load_cases, run_eval
+        from codesage.index import VectorRetrievalStrategy
 
         repo_path = Path(args.repo)
-        index_path = repo_path / INDEX_FILENAME
-        if not index_path.exists():
-            print(f"No index found. Run 'codesage ingest {repo_path}' first.", file=sys.stderr)
-            sys.exit(1)
-
         cases_path = Path(args.cases)
         if not cases_path.exists():
             print(f"No eval cases found at {cases_path}. See eval_cases.json for the format.", file=sys.stderr)
             sys.exit(1)
+        cases = load_cases(cases_path)
 
-        from codesage.index import VectorRetrievalStrategy
+        if args.compare:
+            from codesage.hierarchy import HierarchicalIndex
+            from codesage.tools import make_hierarchical_search_tool
 
-        chunks = load_chunks(index_path)
-        index = RetrievalIndex(chunks)
-        registry = build_base_registry(repo_path)
-        registry.register(make_search_code_tool(index, llm))
+            index_path = repo_path / INDEX_FILENAME
+            hierarchy_index_path = repo_path / HIERARCHY_INDEX_FILENAME
+            if not index_path.exists():
+                print(f"No vector index found. Run 'codesage ingest {repo_path}' first.", file=sys.stderr)
+                sys.exit(1)
+            if not hierarchy_index_path.exists():
+                print(
+                    f"No hierarchy index found. Run 'codesage ingest-hierarchy {repo_path}' first.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
-        results = run_eval(
-            lambda: Agent(llm, tools=registry), VectorRetrievalStrategy(index), llm, load_cases(cases_path)
-        )
-        print(f"Retrieval hit rate: {results['retrieval_hit_rate']:.0%}")
-        print(f"Avg answer score:   {results['avg_answer_score']:.0%}")
+            vector_index = RetrievalIndex(load_chunks(index_path))
+            vector_registry = build_base_registry(repo_path)
+            vector_registry.register(make_search_code_tool(vector_index, llm))
+            vector_results = run_eval(
+                lambda: Agent(llm, tools=vector_registry), VectorRetrievalStrategy(vector_index), llm, cases
+            )
+
+            hierarchy_index = HierarchicalIndex(load_chunks(hierarchy_index_path))
+            hierarchy_registry = build_base_registry(repo_path)
+            hierarchy_registry.register(make_hierarchical_search_tool(hierarchy_index, llm))
+            hierarchy_results = run_eval(
+                lambda: Agent(llm, tools=hierarchy_registry), hierarchy_index, llm, cases
+            )
+
+            print(f"{'Strategy':<12}{'Retrieval hit rate':<22}{'Avg answer score':<20}")
+            print(
+                f"{'vector':<12}"
+                f"{vector_results['retrieval_hit_rate']:<22.0%}"
+                f"{vector_results['avg_answer_score']:<20.0%}"
+            )
+            print(
+                f"{'hierarchy':<12}"
+                f"{hierarchy_results['retrieval_hit_rate']:<22.0%}"
+                f"{hierarchy_results['avg_answer_score']:<20.0%}"
+            )
+
+        else:
+            index_path = repo_path / INDEX_FILENAME
+            if not index_path.exists():
+                print(f"No index found. Run 'codesage ingest {repo_path}' first.", file=sys.stderr)
+                sys.exit(1)
+
+            chunks = load_chunks(index_path)
+            index = RetrievalIndex(chunks)
+            registry = build_base_registry(repo_path)
+            registry.register(make_search_code_tool(index, llm))
+
+            results = run_eval(lambda: Agent(llm, tools=registry), VectorRetrievalStrategy(index), llm, cases)
+            print(f"Retrieval hit rate: {results['retrieval_hit_rate']:.0%}")
+            print(f"Avg answer score:   {results['avg_answer_score']:.0%}")
 
     elif args.command == "onboard":
         from codesage.supervisor import generate_onboarding_doc
