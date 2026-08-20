@@ -205,7 +205,7 @@ uv run pytest -m integration # end-to-end, needs GEMINI_API_KEY
 
 ## Live demo
 
-https://codesage-qte5.onrender.com — deployed to Render's free tier
+https://codesage-qte5.onrender.com/docs — deployed to Render's free tier
 (cold starts after 15 min idle are expected on the free plan).
 
 ```bash
