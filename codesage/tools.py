@@ -11,6 +11,7 @@ from typing import Callable
 from google.genai import types
 
 from codesage.index import RetrievalIndex
+from codesage.ingest import SKIP_DIRS
 
 
 @dataclass
@@ -78,6 +79,42 @@ def read_file_handler(
     start = (start_line or 1) - 1
     end = end_line or len(lines)
     return "\n".join(lines[start:end])
+
+
+_MAX_TREE_ENTRIES = 200
+
+
+def repo_tree_handler(base_dir: Path, subdir: str = ".") -> str:
+    target = (base_dir / subdir).resolve()
+    if not str(target).startswith(str(Path(base_dir).resolve())):
+        return "Error: path escapes the target repo."
+    if not target.exists():
+        return f"Error: {subdir} does not exist."
+
+    lines: list[str] = []
+    count = 0
+    truncated = False
+
+    def walk(dir_path: Path, prefix: str) -> None:
+        nonlocal count, truncated
+        if truncated:
+            return
+        entries = sorted(dir_path.iterdir(), key=lambda p: (p.is_file(), p.name))
+        for entry in entries:
+            if entry.is_dir() and entry.name in SKIP_DIRS:
+                continue
+            if count >= _MAX_TREE_ENTRIES:
+                truncated = True
+                return
+            lines.append(f"{prefix}{entry.name}{'/' if entry.is_dir() else ''}")
+            count += 1
+            if entry.is_dir():
+                walk(entry, prefix + "  ")
+
+    walk(target, "")
+    if truncated:
+        lines.append("... (truncated)")
+    return "\n".join(lines) if lines else "(empty directory)"
 
 
 def make_search_code_tool(index: RetrievalIndex, llm) -> Tool:
